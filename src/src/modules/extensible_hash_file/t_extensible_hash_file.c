@@ -37,8 +37,8 @@ void test_ehf_insert_and_find_existing_key(void) {
   uint64_t data_offset = 0u;
 
   TEST_ASSERT_NOT_NULL(hash);
-  TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_insert(hash, 7u, 123u));
-  TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_find(hash, 7u, &data_offset));
+  TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_insert(hash, "A1", 123u));
+  TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_find(hash, "A1", &data_offset));
   TEST_ASSERT_EQUAL_UINT64(123u, data_offset);
 
   ehf_close(hash);
@@ -49,7 +49,7 @@ void test_ehf_find_returns_not_found_for_missing_key(void) {
   uint64_t data_offset = 0u;
 
   TEST_ASSERT_NOT_NULL(hash);
-  TEST_ASSERT_EQUAL_INT(EHF_NOT_FOUND, ehf_find(hash, 99u, &data_offset));
+  TEST_ASSERT_EQUAL_INT(EHF_NOT_FOUND, ehf_find(hash, "ZZ99", &data_offset));
 
   ehf_close(hash);
 }
@@ -58,8 +58,8 @@ void test_ehf_insert_rejects_duplicate_key(void) {
   extensible_hash_file_t hash = ehf_create(TEST_INDEX_PATH, 2u);
 
   TEST_ASSERT_NOT_NULL(hash);
-  TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_insert(hash, 10u, 1000u));
-  TEST_ASSERT_EQUAL_INT(EHF_DUPLICATE_KEY, ehf_insert(hash, 10u, 2000u));
+  TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_insert(hash, "USER10", 1000u));
+  TEST_ASSERT_EQUAL_INT(EHF_DUPLICATE_KEY, ehf_insert(hash, "USER10", 2000u));
 
   ehf_close(hash);
 }
@@ -69,9 +69,9 @@ void test_ehf_remove_existing_key(void) {
   uint64_t data_offset = 0u;
 
   TEST_ASSERT_NOT_NULL(hash);
-  TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_insert(hash, 15u, 1500u));
-  TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_remove(hash, 15u));
-  TEST_ASSERT_EQUAL_INT(EHF_NOT_FOUND, ehf_find(hash, 15u, &data_offset));
+  TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_insert(hash, "KEY15", 1500u));
+  TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_remove(hash, "KEY15"));
+  TEST_ASSERT_EQUAL_INT(EHF_NOT_FOUND, ehf_find(hash, "KEY15", &data_offset));
 
   ehf_close(hash);
 }
@@ -80,7 +80,7 @@ void test_ehf_remove_missing_key_returns_not_found(void) {
   extensible_hash_file_t hash = ehf_create(TEST_INDEX_PATH, 2u);
 
   TEST_ASSERT_NOT_NULL(hash);
-  TEST_ASSERT_EQUAL_INT(EHF_NOT_FOUND, ehf_remove(hash, 44u));
+  TEST_ASSERT_EQUAL_INT(EHF_NOT_FOUND, ehf_remove(hash, "MISSING44"));
 
   ehf_close(hash);
 }
@@ -90,18 +90,18 @@ void test_ehf_persists_data_across_close_and_open(void) {
   uint64_t data_offset = 0u;
 
   TEST_ASSERT_NOT_NULL(hash);
-  TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_insert(hash, 1u, 11u));
-  TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_insert(hash, 2u, 22u));
-  TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_insert(hash, 3u, 33u));
+  TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_insert(hash, "A1", 11u));
+  TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_insert(hash, "B2", 22u));
+  TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_insert(hash, "C3", 33u));
   ehf_close(hash);
 
   hash = ehf_open(TEST_INDEX_PATH);
   TEST_ASSERT_NOT_NULL(hash);
-  TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_find(hash, 1u, &data_offset));
+  TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_find(hash, "A1", &data_offset));
   TEST_ASSERT_EQUAL_UINT64(11u, data_offset);
-  TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_find(hash, 2u, &data_offset));
+  TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_find(hash, "B2", &data_offset));
   TEST_ASSERT_EQUAL_UINT64(22u, data_offset);
-  TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_find(hash, 3u, &data_offset));
+  TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_find(hash, "C3", &data_offset));
   TEST_ASSERT_EQUAL_UINT64(33u, data_offset);
 
   ehf_close(hash);
@@ -112,10 +112,16 @@ void test_ehf_handles_null_arguments_defensively(void) {
   uint64_t data_offset = 0u;
 
   TEST_ASSERT_NOT_NULL(hash);
-  TEST_ASSERT_EQUAL_INT(EHF_INVALID_ARGUMENT, ehf_insert(NULL, 1u, 1u));
-  TEST_ASSERT_EQUAL_INT(EHF_INVALID_ARGUMENT, ehf_find(NULL, 1u, &data_offset));
-  TEST_ASSERT_EQUAL_INT(EHF_INVALID_ARGUMENT, ehf_find(hash, 1u, NULL));
-  TEST_ASSERT_EQUAL_INT(EHF_INVALID_ARGUMENT, ehf_remove(NULL, 1u));
+  TEST_ASSERT_EQUAL_INT(EHF_INVALID_ARGUMENT, ehf_insert(NULL, "A1", 1u));
+  TEST_ASSERT_EQUAL_INT(EHF_INVALID_ARGUMENT, ehf_find(NULL, "A1", &data_offset));
+  TEST_ASSERT_EQUAL_INT(EHF_INVALID_ARGUMENT, ehf_find(hash, "A1", NULL));
+  TEST_ASSERT_EQUAL_INT(EHF_INVALID_ARGUMENT, ehf_remove(NULL, "A1"));
+  TEST_ASSERT_EQUAL_INT(EHF_INVALID_ARGUMENT, ehf_insert(hash, NULL, 1u));
+  TEST_ASSERT_EQUAL_INT(EHF_INVALID_ARGUMENT, ehf_insert(hash, "", 1u));
+  TEST_ASSERT_EQUAL_INT(EHF_INVALID_ARGUMENT,
+                        ehf_insert(hash, "abc-123", 1u));
+  TEST_ASSERT_EQUAL_INT(EHF_INVALID_ARGUMENT,
+                        ehf_insert(hash, "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567", 1u));
 
   ehf_close(hash);
 }
@@ -123,17 +129,46 @@ void test_ehf_handles_null_arguments_defensively(void) {
 void test_ehf_triggers_split_without_breaking_public_contract(void) {
   extensible_hash_file_t hash = ehf_create(TEST_INDEX_PATH, 2u);
   uint64_t data_offset = 0u;
-  uint32_t key;
+  const char *keys[] = {"A1", "B2", "C3", "D4", "E5",
+                        "F6", "G7", "H8", "I9", "J10"};
+  size_t key;
 
   TEST_ASSERT_NOT_NULL(hash);
 
   for (key = 0u; key < 10u; ++key) {
-    TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_insert(hash, key, (uint64_t)key * 10u));
+    TEST_ASSERT_EQUAL_INT(EHF_OK,
+                          ehf_insert(hash, keys[key], (uint64_t)key * 10u));
   }
 
   for (key = 0u; key < 10u; ++key) {
-    TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_find(hash, key, &data_offset));
+    TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_find(hash, keys[key], &data_offset));
     TEST_ASSERT_EQUAL_UINT64((uint64_t)key * 10u, data_offset);
+  }
+
+  ehf_close(hash);
+}
+
+void test_ehf_persists_data_after_split_and_reopen(void) {
+  extensible_hash_file_t hash = ehf_create(TEST_INDEX_PATH, 2u);
+  uint64_t data_offset = 0u;
+  const char *keys[] = {"AA1", "BB2", "CC3", "DD4", "EE5", "FF6"};
+  size_t key;
+
+  TEST_ASSERT_NOT_NULL(hash);
+
+  for (key = 0u; key < 6u; ++key) {
+    TEST_ASSERT_EQUAL_INT(EHF_OK,
+                          ehf_insert(hash, keys[key], (uint64_t)(100u + key)));
+  }
+
+  ehf_close(hash);
+
+  hash = ehf_open(TEST_INDEX_PATH);
+  TEST_ASSERT_NOT_NULL(hash);
+
+  for (key = 0u; key < 6u; ++key) {
+    TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_find(hash, keys[key], &data_offset));
+    TEST_ASSERT_EQUAL_UINT64((uint64_t)(100u + key), data_offset);
   }
 
   ehf_close(hash);
@@ -153,5 +188,6 @@ int main(void) {
   RUN_TEST(test_ehf_persists_data_across_close_and_open);
   RUN_TEST(test_ehf_handles_null_arguments_defensively);
   RUN_TEST(test_ehf_triggers_split_without_breaking_public_contract);
+  RUN_TEST(test_ehf_persists_data_after_split_and_reopen);
   return UNITY_END();
 }

@@ -1,11 +1,23 @@
 #ifndef EXTENSIBLE_HASH_FILE_H
 #define EXTENSIBLE_HASH_FILE_H
 
+/*
+ * File-backed extensible hash index.
+ *
+ * Use ehf_create() to create a new index file or ehf_open() to reuse an
+ * existing one. Store records by passing an alphanumeric key and the
+ * corresponding data file offset to ehf_insert(), recover offsets with
+ * ehf_find(), remove entries with ehf_remove(), and always finish with
+ * ehf_close().
+ */
+
 #include <stdbool.h>
 #include <stdint.h>
 
+/* Opaque handle for a file-backed extensible hash index. */
 typedef void *extensible_hash_file_t;
 
+/* Result codes returned by the public index operations. */
 typedef enum {
     EHF_OK = 0,
     EHF_NOT_FOUND,
@@ -15,14 +27,52 @@ typedef enum {
     EHF_CORRUPTED_FILE
 } ehf_status_t;
 
+/*
+ * Creates a new index file at index_path.
+ *
+ * bucket_capacity defines how many entries fit in each bucket before a split.
+ * Returns NULL when the arguments are invalid or allocation/write fails.
+ */
 extensible_hash_file_t ehf_create(const char *index_path, uint32_t bucket_capacity);
+
+/*
+ * Opens an existing index file and validates its header.
+ *
+ * Returns NULL if index_path is invalid, if the file does not exist, or if the
+ * contents do not match the expected format.
+ */
 extensible_hash_file_t ehf_open(const char *index_path);
+
+/* Closes the index, releases its resources, and accepts NULL safely. */
 void ehf_close(extensible_hash_file_t hash);
 
-ehf_status_t ehf_insert(extensible_hash_file_t hash, uint32_t key, uint64_t data_offset);
-ehf_status_t ehf_find(extensible_hash_file_t hash, uint32_t key, uint64_t *out_data_offset);
-ehf_status_t ehf_remove(extensible_hash_file_t hash, uint32_t key);
+/*
+ * Inserts a 1- to 32-character alphanumeric key associated with data_offset.
+ *
+ * Returns EHF_DUPLICATE_KEY when the key already exists, EHF_INVALID_ARGUMENT
+ * for invalid handles/keys, EHF_IO_ERROR for write failures, or EHF_OK on
+ * success.
+ */
+ehf_status_t ehf_insert(extensible_hash_file_t hash, const char *key, uint64_t data_offset);
 
+/*
+ * Finds a 1- to 32-character alphanumeric key.
+ *
+ * On success, writes the found offset to out_data_offset and returns EHF_OK.
+ * Returns EHF_NOT_FOUND when the key does not exist and EHF_INVALID_ARGUMENT
+ * when hash, key, or out_data_offset is invalid.
+ */
+ehf_status_t ehf_find(extensible_hash_file_t hash, const char *key, uint64_t *out_data_offset);
+
+/*
+ * Removes a 1- to 32-character alphanumeric key from the index.
+ *
+ * Returns EHF_NOT_FOUND when the key does not exist and EHF_INVALID_ARGUMENT
+ * for invalid handles/keys.
+ */
+ehf_status_t ehf_remove(extensible_hash_file_t hash, const char *key);
+
+/* Reports whether the handle points to an open, valid index. */
 bool ehf_is_open(extensible_hash_file_t hash);
 
 #endif
