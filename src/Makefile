@@ -1,7 +1,7 @@
 # Makefile atualizado para automatizar OBJETOS e dependências
 PROJ_NAME = ted
 LIBS = -lm
-TEST_SUPPORT_SRC = ./modules/unity/unity.c
+TEST_SUPPORT_SRC = ./lib/unity/unity.c
 # Tenta find primeiro, se falhar usa wildcard
 SRC_FILES := $(shell find . -name "*.c" ! -name "t_*.c" ! -path "$(TEST_SUPPORT_SRC)" 2>/dev/null)
 ifeq ($(SRC_FILES),)

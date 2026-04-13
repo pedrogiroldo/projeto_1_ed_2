@@ -1,9 +1,9 @@
 #include <stdio.h>
 
-#include "modules/args_handler/args_handler.h"
+#include "lib/args_handler/args_handler.h"
 
-int main(int argc, char **argv) {
-    
+int main(int argc, char **argv)
+{
 
     return 0;
 }
