@@ -6,18 +6,19 @@
 #include <string.h>
 
 #define EHF_MAGIC "EHF1"
-#define EHF_VERSION 1u
+#define EHF_VERSION 2u
 #define EHF_MAX_KEY_LENGTH 32u
 
 typedef struct {
   uint8_t occupied;
   char key[EHF_MAX_KEY_LENGTH + 1u];
-  uint64_t data_offset;
+  unsigned char *record;
 } ehf_entry_t;
 
 typedef struct {
   uint32_t local_depth;
   uint32_t count;
+  uint32_t capacity;
   ehf_entry_t *entries;
 } ehf_bucket_t;
 
@@ -27,6 +28,7 @@ typedef struct {
   uint32_t bucket_capacity;
   uint32_t global_depth;
   uint32_t directory_size;
+  uint32_t record_size;
   uint64_t directory_offset;
 } ehf_header_t;
 
@@ -91,7 +93,8 @@ static bool ehf_validate_key(const char *key) {
 static uint64_t ehf_bucket_record_size(const ehf_handle_t *handle) {
   return sizeof(uint32_t) + sizeof(uint32_t) +
          (uint64_t)handle->header.bucket_capacity *
-             (sizeof(uint8_t) + (EHF_MAX_KEY_LENGTH + 1u) + sizeof(uint64_t));
+             (sizeof(uint8_t) + (EHF_MAX_KEY_LENGTH + 1u) +
+              handle->header.record_size);
 }
 
 static bool ehf_write_header(ehf_handle_t *handle) {
@@ -121,6 +124,11 @@ static bool ehf_write_header(ehf_handle_t *handle) {
 
   if (!ehf_write_exact(handle->file, &header->directory_size,
                        sizeof(header->directory_size))) {
+    return false;
+  }
+
+  if (!ehf_write_exact(handle->file, &header->record_size,
+                       sizeof(header->record_size))) {
     return false;
   }
 
@@ -159,6 +167,10 @@ static bool ehf_read_header(FILE *file, ehf_header_t *header) {
     return false;
   }
 
+  if (!ehf_read_exact(file, &header->record_size, sizeof(header->record_size))) {
+    return false;
+  }
+
   if (!ehf_read_exact(file, &header->directory_offset,
                       sizeof(header->directory_offset))) {
     return false;
@@ -172,7 +184,8 @@ static bool ehf_header_is_valid(const ehf_header_t *header) {
     return false;
   }
 
-  if (header->version != EHF_VERSION || header->bucket_capacity == 0u) {
+  if (header->version != EHF_VERSION || header->bucket_capacity == 0u ||
+      header->record_size == 0u) {
     return false;
   }
 
@@ -191,18 +204,32 @@ static bool ehf_header_is_valid(const ehf_header_t *header) {
   return true;
 }
 
-static ehf_bucket_t *ehf_bucket_create(uint32_t bucket_capacity) {
+static void ehf_bucket_destroy(ehf_bucket_t *bucket);
+
+static ehf_bucket_t *ehf_bucket_create(uint32_t bucket_capacity,
+                                       uint32_t record_size) {
   ehf_bucket_t *bucket = (ehf_bucket_t *)calloc(1u, sizeof(*bucket));
+  uint32_t entry_index;
 
   if (bucket == NULL) {
     return NULL;
   }
 
+  bucket->capacity = bucket_capacity;
   bucket->entries =
       (ehf_entry_t *)calloc(bucket_capacity, sizeof(*bucket->entries));
   if (bucket->entries == NULL) {
     free(bucket);
     return NULL;
+  }
+
+  for (entry_index = 0u; entry_index < bucket_capacity; ++entry_index) {
+    bucket->entries[entry_index].record =
+        (unsigned char *)calloc(1u, (size_t)record_size);
+    if (bucket->entries[entry_index].record == NULL) {
+      ehf_bucket_destroy(bucket);
+      return NULL;
+    }
   }
 
   return bucket;
@@ -213,7 +240,16 @@ static void ehf_bucket_destroy(ehf_bucket_t *bucket) {
     return;
   }
 
-  free(bucket->entries);
+  if (bucket->entries != NULL) {
+    uint32_t entry_index;
+
+    for (entry_index = 0u; entry_index < bucket->capacity; ++entry_index) {
+      free(bucket->entries[entry_index].record);
+    }
+
+    free(bucket->entries);
+  }
+
   free(bucket);
 }
 
@@ -246,8 +282,8 @@ static bool ehf_write_bucket(const ehf_handle_t *handle, uint64_t offset,
       return false;
     }
 
-    if (!ehf_write_exact(handle->file, &entry->data_offset,
-                         sizeof(entry->data_offset))) {
+    if (!ehf_write_exact(handle->file, entry->record,
+                         handle->header.record_size)) {
       return false;
     }
   }
@@ -290,8 +326,8 @@ static bool ehf_read_bucket(const ehf_handle_t *handle, uint64_t offset,
 
     entry->key[EHF_MAX_KEY_LENGTH] = '\0';
 
-    if (!ehf_read_exact(handle->file, &entry->data_offset,
-                        sizeof(entry->data_offset))) {
+    if (!ehf_read_exact(handle->file, entry->record,
+                        handle->header.record_size)) {
       return false;
     }
   }
@@ -384,11 +420,18 @@ static bool ehf_find_free_slot(const ehf_handle_t *handle, const ehf_bucket_t *b
   return false;
 }
 
-static void ehf_fill_entry(ehf_entry_t *entry, const char *key, uint64_t data_offset) {
+static void ehf_clear_entry(ehf_entry_t *entry, uint32_t record_size) {
+  entry->occupied = 0u;
+  memset(entry->key, 0, sizeof(entry->key));
+  memset(entry->record, 0, (size_t)record_size);
+}
+
+static void ehf_fill_entry(ehf_entry_t *entry, const char *key,
+                           const void *record, uint32_t record_size) {
   entry->occupied = 1u;
   memset(entry->key, 0, sizeof(entry->key));
   memcpy(entry->key, key, strlen(key));
-  entry->data_offset = data_offset;
+  memcpy(entry->record, record, (size_t)record_size);
 }
 
 static uint32_t ehf_directory_index(const ehf_handle_t *handle, const char *key) {
@@ -460,8 +503,10 @@ static ehf_status_t ehf_split_bucket(ehf_handle_t *handle, uint64_t **directory_
     *directory_in_out = directory;
   }
 
-  redistributed_bucket = ehf_bucket_create(handle->header.bucket_capacity);
-  new_bucket = ehf_bucket_create(handle->header.bucket_capacity);
+  redistributed_bucket =
+      ehf_bucket_create(handle->header.bucket_capacity, handle->header.record_size);
+  new_bucket =
+      ehf_bucket_create(handle->header.bucket_capacity, handle->header.record_size);
   if (redistributed_bucket == NULL || new_bucket == NULL) {
     ehf_bucket_destroy(redistributed_bucket);
     ehf_bucket_destroy(new_bucket);
@@ -491,7 +536,8 @@ static ehf_status_t ehf_split_bucket(ehf_handle_t *handle, uint64_t **directory_
       return EHF_CORRUPTED_FILE;
     }
 
-    ehf_fill_entry(&target_bucket->entries[slot], entry->key, entry->data_offset);
+    ehf_fill_entry(&target_bucket->entries[slot], entry->key, entry->record,
+                   handle->header.record_size);
     target_bucket->count += 1u;
   }
 
@@ -518,8 +564,17 @@ static ehf_status_t ehf_split_bucket(ehf_handle_t *handle, uint64_t **directory_
 
   bucket->local_depth = redistributed_bucket->local_depth;
   bucket->count = redistributed_bucket->count;
-  memcpy(bucket->entries, redistributed_bucket->entries,
-         (size_t)handle->header.bucket_capacity * sizeof(*bucket->entries));
+  for (entry_index = 0u; entry_index < handle->header.bucket_capacity;
+       ++entry_index) {
+    if (redistributed_bucket->entries[entry_index].occupied != 0u) {
+      ehf_fill_entry(&bucket->entries[entry_index],
+                     redistributed_bucket->entries[entry_index].key,
+                     redistributed_bucket->entries[entry_index].record,
+                     handle->header.record_size);
+    } else {
+      ehf_clear_entry(&bucket->entries[entry_index], handle->header.record_size);
+    }
+  }
 
   (void)directory_index;
   ehf_bucket_destroy(redistributed_bucket);
@@ -528,7 +583,7 @@ static ehf_status_t ehf_split_bucket(ehf_handle_t *handle, uint64_t **directory_
 }
 
 static ehf_status_t ehf_insert_internal(ehf_handle_t *handle, const char *key,
-                                        uint64_t data_offset) {
+                                        const void *record) {
   uint64_t *directory = NULL;
   ehf_bucket_t *bucket = NULL;
   ehf_status_t status = EHF_IO_ERROR;
@@ -537,7 +592,8 @@ static ehf_status_t ehf_insert_internal(ehf_handle_t *handle, const char *key,
     return EHF_IO_ERROR;
   }
 
-  bucket = ehf_bucket_create(handle->header.bucket_capacity);
+  bucket = ehf_bucket_create(handle->header.bucket_capacity,
+                             handle->header.record_size);
   if (bucket == NULL) {
     free(directory);
     return EHF_IO_ERROR;
@@ -559,7 +615,8 @@ static ehf_status_t ehf_insert_internal(ehf_handle_t *handle, const char *key,
     }
 
     if (ehf_find_free_slot(handle, bucket, &slot)) {
-      ehf_fill_entry(&bucket->entries[slot], key, data_offset);
+      ehf_fill_entry(&bucket->entries[slot], key, record,
+                     handle->header.record_size);
       bucket->count += 1u;
 
       status = ehf_write_bucket(handle, bucket_offset, bucket) ? EHF_OK : EHF_IO_ERROR;
@@ -577,7 +634,8 @@ static ehf_status_t ehf_insert_internal(ehf_handle_t *handle, const char *key,
   return status;
 }
 
-extensible_hash_file_t ehf_create(const char *index_path, uint32_t bucket_capacity) {
+extensible_hash_file_t ehf_create(const char *index_path, uint32_t bucket_capacity,
+                                  size_t record_size) {
   ehf_handle_t *handle;
   uint64_t directory[2];
   ehf_bucket_t *bucket0 = NULL;
@@ -585,7 +643,8 @@ extensible_hash_file_t ehf_create(const char *index_path, uint32_t bucket_capaci
   uint64_t bucket0_offset;
   uint64_t bucket1_offset;
 
-  if (index_path == NULL || bucket_capacity == 0u) {
+  if (index_path == NULL || bucket_capacity == 0u || record_size == 0u ||
+      record_size > UINT32_MAX) {
     return NULL;
   }
 
@@ -605,11 +664,12 @@ extensible_hash_file_t ehf_create(const char *index_path, uint32_t bucket_capaci
   handle->header.bucket_capacity = bucket_capacity;
   handle->header.global_depth = 1u;
   handle->header.directory_size = 2u;
+  handle->header.record_size = (uint32_t)record_size;
   handle->header.directory_offset = sizeof(ehf_header_t);
   handle->is_open = true;
 
-  bucket0 = ehf_bucket_create(bucket_capacity);
-  bucket1 = ehf_bucket_create(bucket_capacity);
+  bucket0 = ehf_bucket_create(bucket_capacity, handle->header.record_size);
+  bucket1 = ehf_bucket_create(bucket_capacity, handle->header.record_size);
   if (bucket0 == NULL || bucket1 == NULL) {
     ehf_bucket_destroy(bucket0);
     ehf_bucket_destroy(bucket1);
@@ -686,27 +746,27 @@ void ehf_close(extensible_hash_file_t hash) {
 }
 
 ehf_status_t ehf_insert(extensible_hash_file_t hash, const char *key,
-                        uint64_t data_offset) {
+                        const void *record, size_t record_size) {
   ehf_handle_t *handle = (ehf_handle_t *)hash;
 
-  (void)data_offset;
-
-  if (!ehf_is_valid_handle(handle) || !ehf_validate_key(key)) {
+  if (!ehf_is_valid_handle(handle) || !ehf_validate_key(key) ||
+      record == NULL || record_size != handle->header.record_size) {
     return EHF_INVALID_ARGUMENT;
   }
 
-  return ehf_insert_internal(handle, key, data_offset);
+  return ehf_insert_internal(handle, key, record);
 }
 
 ehf_status_t ehf_find(extensible_hash_file_t hash, const char *key,
-                      uint64_t *out_data_offset) {
+                      void *out_record, size_t record_size) {
   ehf_handle_t *handle = (ehf_handle_t *)hash;
   uint64_t *directory = NULL;
   ehf_bucket_t *bucket = NULL;
   ehf_status_t status = EHF_NOT_FOUND;
   uint32_t slot;
 
-  if (!ehf_is_valid_handle(handle) || !ehf_validate_key(key) || out_data_offset == NULL) {
+  if (!ehf_is_valid_handle(handle) || !ehf_validate_key(key) ||
+      out_record == NULL || record_size != handle->header.record_size) {
     return EHF_INVALID_ARGUMENT;
   }
 
@@ -714,7 +774,8 @@ ehf_status_t ehf_find(extensible_hash_file_t hash, const char *key,
     return EHF_IO_ERROR;
   }
 
-  bucket = ehf_bucket_create(handle->header.bucket_capacity);
+  bucket = ehf_bucket_create(handle->header.bucket_capacity,
+                             handle->header.record_size);
   if (bucket == NULL) {
     free(directory);
     return EHF_IO_ERROR;
@@ -723,7 +784,7 @@ ehf_status_t ehf_find(extensible_hash_file_t hash, const char *key,
   if (!ehf_read_bucket(handle, directory[ehf_directory_index(handle, key)], bucket)) {
     status = EHF_CORRUPTED_FILE;
   } else if (ehf_find_slot(handle, bucket, key, &slot)) {
-    *out_data_offset = bucket->entries[slot].data_offset;
+    memcpy(out_record, bucket->entries[slot].record, record_size);
     status = EHF_OK;
   }
 
@@ -749,7 +810,8 @@ ehf_status_t ehf_remove(extensible_hash_file_t hash, const char *key) {
     return EHF_IO_ERROR;
   }
 
-  bucket = ehf_bucket_create(handle->header.bucket_capacity);
+  bucket = ehf_bucket_create(handle->header.bucket_capacity,
+                             handle->header.record_size);
   if (bucket == NULL) {
     free(directory);
     return EHF_IO_ERROR;
@@ -760,9 +822,7 @@ ehf_status_t ehf_remove(extensible_hash_file_t hash, const char *key) {
   if (!ehf_read_bucket(handle, bucket_offset, bucket)) {
     status = EHF_CORRUPTED_FILE;
   } else if (ehf_find_slot(handle, bucket, key, &slot)) {
-    bucket->entries[slot].occupied = 0u;
-    memset(bucket->entries[slot].key, 0, sizeof(bucket->entries[slot].key));
-    bucket->entries[slot].data_offset = 0u;
+    ehf_clear_entry(&bucket->entries[slot], handle->header.record_size);
     bucket->count -= 1u;
     status = ehf_write_bucket(handle, bucket_offset, bucket) ? EHF_OK : EHF_IO_ERROR;
   }
