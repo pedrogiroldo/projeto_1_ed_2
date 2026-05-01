@@ -27,7 +27,12 @@ read_file_to_queue_and_stack(const char *filepath);
 
 // Creates a new FileData instance and reads the file
 FileData file_data_create(const char *filepath) {
-  struct FileData *file = malloc(sizeof(struct FileData));
+  struct FileData *file;
+  if (filepath == NULL) {
+    return NULL;
+  }
+
+  file = malloc(sizeof(struct FileData));
   if (file == NULL) {
     printf("Error: Failed to allocate memory for FileData\n");
     return NULL;
@@ -42,10 +47,10 @@ FileData file_data_create(const char *filepath) {
 
   if (linesQueueAndStack == NULL || linesQueueAndStack->linesQueue == NULL ||
       linesQueueAndStack->linesStackToFree == NULL) {
-    printf("Error: Failed to read the file lines\n");
     if (linesQueueAndStack != NULL) {
       free(linesQueueAndStack);
     }
+    free(file);
     return NULL;
   }
 
@@ -115,28 +120,39 @@ void file_data_destroy(FileData fileData) {
 // Gets the file path
 const char *get_file_path(const FileData fileData) {
   struct FileData *file = (struct FileData *)fileData;
+  if (file == NULL) {
+    return NULL;
+  }
   return file->filepath;
 }
 
 // Gets the file name
 const char *get_file_name(const FileData fileData) {
   struct FileData *file = (struct FileData *)fileData;
+  if (file == NULL) {
+    return NULL;
+  }
   return file->filename;
 }
 
 // Gets the file lines queue
 Queue get_file_lines_queue(const FileData fileData) {
   struct FileData *file = (struct FileData *)fileData;
+  if (file == NULL) {
+    return NULL;
+  }
   return file->linesQueue;
 }
 
 // Reads a line from file using fgets
 static char *read_line(FILE *file, char *buffer, size_t size) {
   if (fgets(buffer, size, file) != NULL) {
-    // Remove newline if present
+    // Remove trailing newline(s), supporting LF and CRLF.
     size_t len = strlen(buffer);
-    if (len > 0 && buffer[len - 1] == '\n') {
-      buffer[len - 1] = '\0';
+    while (len > 0u &&
+           (buffer[len - 1u] == '\n' || buffer[len - 1u] == '\r')) {
+      buffer[len - 1u] = '\0';
+      len--;
     }
     return buffer;
   }

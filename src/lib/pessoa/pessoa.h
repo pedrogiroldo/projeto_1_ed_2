@@ -9,7 +9,7 @@
  * pessoa_para_registro() / pessoa_criar_de_registro().
  */
 
-#define PESSOA_CPF_MAX       11u   /* somente dígitos, sem pontuação */
+#define PESSOA_CPF_MAX       15u   /* aceita formato com pontuação */
 #define PESSOA_NOME_MAX      64u
 #define PESSOA_NASC_MAX      10u   /* formato dd/mm/aaaa */
 

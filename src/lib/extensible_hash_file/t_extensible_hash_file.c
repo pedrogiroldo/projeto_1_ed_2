@@ -159,7 +159,7 @@ void test_ehf_handles_null_arguments_defensively(void) {
                         ehf_insert(hash, NULL, &record, sizeof(record)));
   TEST_ASSERT_EQUAL_INT(EHF_INVALID_ARGUMENT,
                         ehf_insert(hash, "", &record, sizeof(record)));
-  TEST_ASSERT_EQUAL_INT(EHF_INVALID_ARGUMENT,
+  TEST_ASSERT_EQUAL_INT(EHF_OK,
                         ehf_insert(hash, "abc-123", &record, sizeof(record)));
   TEST_ASSERT_EQUAL_INT(
       EHF_INVALID_ARGUMENT,

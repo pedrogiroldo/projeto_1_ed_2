@@ -92,7 +92,8 @@ static bool ehf_validate_key(const char *key) {
   }
 
   for (index = 0u; index < length; ++index) {
-    if (!isalnum((unsigned char)key[index])) {
+    if (!isalnum((unsigned char)key[index]) && key[index] != '.' &&
+        key[index] != '-') {
       return false;
     }
   }

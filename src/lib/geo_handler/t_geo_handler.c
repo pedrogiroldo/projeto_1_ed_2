@@ -156,6 +156,25 @@ void test_geo_handler_quadra_gera_svg(void) {
     ehf_close(hf);
 }
 
+void test_geo_handler_aceita_cq_com_px(void) {
+    extensible_hash_file_t hf =
+        ehf_create(HF_PATH, 4u, sizeof(quadra_registro_t));
+    geo_handler_resultado_t res;
+    quadra_registro_t reg;
+
+    TEST_ASSERT_NOT_NULL(hf);
+    write_geo("cq 1.0px Olive Moccasin\n"
+              "q b01.1 0 0 100 100\n");
+
+    res = geo_handler_processar(GEO_PATH, hf, NULL);
+
+    TEST_ASSERT_EQUAL_INT(1, res.quadras_inseridas);
+    TEST_ASSERT_EQUAL_INT(0, res.erros);
+    TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_find(hf, "b01.1", &reg, sizeof(reg)));
+
+    ehf_close(hf);
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_geo_handler_insere_quadras_no_hashfile);
@@ -165,5 +184,6 @@ int main(void) {
     RUN_TEST(test_geo_handler_arquivo_nao_existe_conta_erro);
     RUN_TEST(test_geo_handler_null_path_conta_erro);
     RUN_TEST(test_geo_handler_quadra_gera_svg);
+    RUN_TEST(test_geo_handler_aceita_cq_com_px);
     return UNITY_END();
 }

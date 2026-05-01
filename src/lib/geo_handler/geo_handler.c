@@ -20,11 +20,22 @@ typedef struct {
 static void geo_processar_cq(const char *linha, geo_estilo_t *estilo) {
     char cfill[GEO_COR_MAX];
     char cstrk[GEO_COR_MAX];
+    char sw_token[64];
     double sw;
+    char extra;
     int parsed;
 
-    parsed = sscanf(linha, "cq %lf %63s %63s", &sw, cfill, cstrk);
-    if (parsed != 3 || sw < 0.0) {
+    parsed = sscanf(linha, "cq %63s %63s %63s %c", sw_token, cfill, cstrk, &extra);
+    if (parsed != 3) {
+        return;
+    }
+
+    if (sscanf(sw_token, "%lfpx", &sw) != 1 &&
+        sscanf(sw_token, "%lf", &sw) != 1) {
+        return;
+    }
+
+    if (sw < 0.0) {
         return;
     }
 
