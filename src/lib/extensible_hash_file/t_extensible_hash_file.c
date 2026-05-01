@@ -229,6 +229,98 @@ void test_ehf_persists_data_after_split_and_reopen(void) {
   ehf_close(hash);
 }
 
+static void count_visitor(const char *key, const void *record,
+                          size_t record_size, void *user_data) {
+  (void)key;
+  (void)record;
+  (void)record_size;
+  int *count = (int *)user_data;
+  (*count)++;
+}
+
+void test_ehf_foreach_iterates_all_records(void) {
+  extensible_hash_file_t hash =
+      ehf_create(TEST_INDEX_PATH, 4u, sizeof(test_record_t));
+  const char *keys[] = {"K1", "K2", "K3", "K4", "K5"};
+  test_record_t record;
+  int count = 0;
+  size_t i;
+
+  TEST_ASSERT_NOT_NULL(hash);
+  for (i = 0u; i < 5u; ++i) {
+    record = make_record((int)i, keys[i]);
+    TEST_ASSERT_EQUAL_INT(EHF_OK,
+                          ehf_insert(hash, keys[i], &record, sizeof(record)));
+  }
+
+  TEST_ASSERT_EQUAL_INT(EHF_OK,
+                        ehf_foreach(hash, count_visitor, sizeof(test_record_t),
+                                    &count));
+  TEST_ASSERT_EQUAL_INT(5, count);
+
+  ehf_close(hash);
+}
+
+void test_ehf_foreach_counts_correctly_after_split(void) {
+  extensible_hash_file_t hash =
+      ehf_create(TEST_INDEX_PATH, 2u, sizeof(test_record_t));
+  const char *keys[] = {"A1", "B2", "C3", "D4", "E5", "F6", "G7", "H8"};
+  test_record_t record;
+  int count = 0;
+  size_t i;
+
+  TEST_ASSERT_NOT_NULL(hash);
+  for (i = 0u; i < 8u; ++i) {
+    record = make_record((int)i, keys[i]);
+    TEST_ASSERT_EQUAL_INT(EHF_OK,
+                          ehf_insert(hash, keys[i], &record, sizeof(record)));
+  }
+
+  TEST_ASSERT_EQUAL_INT(EHF_OK,
+                        ehf_foreach(hash, count_visitor, sizeof(test_record_t),
+                                    &count));
+  TEST_ASSERT_EQUAL_INT(8, count);
+
+  ehf_close(hash);
+}
+
+void test_ehf_foreach_rejects_null_visitor(void) {
+  extensible_hash_file_t hash =
+      ehf_create(TEST_INDEX_PATH, 2u, sizeof(test_record_t));
+
+  TEST_ASSERT_NOT_NULL(hash);
+  TEST_ASSERT_EQUAL_INT(EHF_INVALID_ARGUMENT,
+                        ehf_foreach(hash, NULL, sizeof(test_record_t), NULL));
+  ehf_close(hash);
+}
+
+void test_ehf_dump_creates_readable_file(void) {
+  static const char *DUMP_PATH = "/tmp/extensible_hash_file_test.hfd";
+  extensible_hash_file_t hash =
+      ehf_create(TEST_INDEX_PATH, 2u, sizeof(test_record_t));
+  test_record_t record;
+  FILE *dump;
+  char line[256];
+
+  TEST_ASSERT_NOT_NULL(hash);
+  record = make_record(1, "alpha");
+  TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_insert(hash, "A1", &record, sizeof(record)));
+  record = make_record(2, "beta");
+  TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_insert(hash, "B2", &record, sizeof(record)));
+  record = make_record(3, "gamma");
+  TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_insert(hash, "C3", &record, sizeof(record)));
+
+  TEST_ASSERT_EQUAL_INT(EHF_OK, ehf_dump(hash, DUMP_PATH));
+  ehf_close(hash);
+
+  dump = fopen(DUMP_PATH, "r");
+  TEST_ASSERT_NOT_NULL(dump);
+  TEST_ASSERT_NOT_NULL(fgets(line, (int)sizeof(line), dump));
+  TEST_ASSERT_NOT_NULL(strstr(line, "Extensible Hash File Dump"));
+  fclose(dump);
+  remove(DUMP_PATH);
+}
+
 int main(void) {
   UNITY_BEGIN();
   RUN_TEST(test_ehf_create_returns_handle_for_valid_path);
@@ -244,5 +336,9 @@ int main(void) {
   RUN_TEST(test_ehf_handles_null_arguments_defensively);
   RUN_TEST(test_ehf_triggers_split_without_breaking_record_storage);
   RUN_TEST(test_ehf_persists_data_after_split_and_reopen);
+  RUN_TEST(test_ehf_foreach_iterates_all_records);
+  RUN_TEST(test_ehf_foreach_counts_correctly_after_split);
+  RUN_TEST(test_ehf_foreach_rejects_null_visitor);
+  RUN_TEST(test_ehf_dump_creates_readable_file);
   return UNITY_END();
 }

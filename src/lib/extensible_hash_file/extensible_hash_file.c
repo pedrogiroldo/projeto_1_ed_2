@@ -33,9 +33,19 @@ typedef struct {
 } ehf_header_t;
 
 typedef struct {
+  uint32_t global_depth_before;
+  uint32_t global_depth_after;
+  uint32_t local_depth_before;
+  uint64_t bucket_offset;
+} ehf_split_event_t;
+
+typedef struct {
   FILE *file;
   ehf_header_t header;
   bool is_open;
+  ehf_split_event_t *split_log;
+  uint32_t split_log_size;
+  uint32_t split_log_capacity;
 } ehf_handle_t;
 
 static bool ehf_write_exact(FILE *file, const void *buffer, size_t size) {
@@ -463,6 +473,38 @@ static bool ehf_append_bucket(ehf_handle_t *handle, const ehf_bucket_t *bucket,
   return true;
 }
 
+static int ehf_compare_uint64(const void *a, const void *b) {
+  uint64_t x = *(const uint64_t *)a;
+  uint64_t y = *(const uint64_t *)b;
+  if (x < y) return -1;
+  if (x > y) return 1;
+  return 0;
+}
+
+static void ehf_log_split(ehf_handle_t *handle, uint32_t global_before,
+                          uint32_t global_after, uint32_t local_before,
+                          uint64_t bucket_offset) {
+  ehf_split_event_t *new_log;
+
+  if (handle->split_log_size >= handle->split_log_capacity) {
+    uint32_t new_cap =
+        handle->split_log_capacity == 0u ? 8u : handle->split_log_capacity * 2u;
+    new_log = (ehf_split_event_t *)realloc(
+        handle->split_log, (size_t)new_cap * sizeof(*new_log));
+    if (new_log == NULL) {
+      return;
+    }
+    handle->split_log = new_log;
+    handle->split_log_capacity = new_cap;
+  }
+
+  handle->split_log[handle->split_log_size].global_depth_before = global_before;
+  handle->split_log[handle->split_log_size].global_depth_after = global_after;
+  handle->split_log[handle->split_log_size].local_depth_before = local_before;
+  handle->split_log[handle->split_log_size].bucket_offset = bucket_offset;
+  handle->split_log_size += 1u;
+}
+
 static ehf_status_t ehf_split_bucket(ehf_handle_t *handle, uint64_t **directory_in_out,
                                      uint32_t directory_index, ehf_bucket_t *bucket,
                                      uint64_t bucket_offset) {
@@ -473,7 +515,9 @@ static ehf_status_t ehf_split_bucket(ehf_handle_t *handle, uint64_t **directory_
   uint32_t old_local_depth;
   uint32_t new_local_depth;
   uint32_t entry_index;
+  uint32_t global_before;
 
+  global_before = handle->header.global_depth;
   old_local_depth = bucket->local_depth;
   new_local_depth = old_local_depth + 1u;
 
@@ -577,6 +621,8 @@ static ehf_status_t ehf_split_bucket(ehf_handle_t *handle, uint64_t **directory_
   }
 
   (void)directory_index;
+  ehf_log_split(handle, global_before, handle->header.global_depth,
+                old_local_depth, bucket_offset);
   ehf_bucket_destroy(redistributed_bucket);
   ehf_bucket_destroy(new_bucket);
   return EHF_OK;
@@ -741,6 +787,7 @@ void ehf_close(extensible_hash_file_t hash) {
     handle->file = NULL;
   }
 
+  free(handle->split_log);
   handle->is_open = false;
   free(handle);
 }
@@ -836,4 +883,183 @@ bool ehf_is_open(extensible_hash_file_t hash) {
   const ehf_handle_t *handle = (const ehf_handle_t *)hash;
 
   return ehf_is_valid_handle(handle);
+}
+
+ehf_status_t ehf_foreach(extensible_hash_file_t hash, ehf_visitor_fn visitor,
+                         size_t record_size, void *user_data) {
+  ehf_handle_t *handle = (ehf_handle_t *)hash;
+  uint64_t *directory = NULL;
+  uint64_t *sorted_offsets = NULL;
+  ehf_bucket_t *bucket = NULL;
+  uint64_t prev_offset;
+  uint32_t i;
+  uint32_t entry_i;
+  ehf_status_t status = EHF_OK;
+
+  if (!ehf_is_valid_handle(handle) || visitor == NULL ||
+      record_size != handle->header.record_size) {
+    return EHF_INVALID_ARGUMENT;
+  }
+
+  if (!ehf_directory_load(handle, &directory)) {
+    return EHF_IO_ERROR;
+  }
+
+  sorted_offsets = (uint64_t *)malloc(
+      (size_t)handle->header.directory_size * sizeof(*sorted_offsets));
+  if (sorted_offsets == NULL) {
+    free(directory);
+    return EHF_IO_ERROR;
+  }
+  memcpy(sorted_offsets, directory,
+         (size_t)handle->header.directory_size * sizeof(*sorted_offsets));
+  qsort(sorted_offsets, (size_t)handle->header.directory_size,
+        sizeof(*sorted_offsets), ehf_compare_uint64);
+
+  bucket = ehf_bucket_create(handle->header.bucket_capacity,
+                             handle->header.record_size);
+  if (bucket == NULL) {
+    free(sorted_offsets);
+    free(directory);
+    return EHF_IO_ERROR;
+  }
+
+  prev_offset = (uint64_t)-1;
+  for (i = 0u; i < handle->header.directory_size; ++i) {
+    uint64_t offset = sorted_offsets[i];
+
+    if (offset == prev_offset) {
+      continue;
+    }
+    prev_offset = offset;
+
+    if (!ehf_read_bucket(handle, offset, bucket)) {
+      status = EHF_CORRUPTED_FILE;
+      break;
+    }
+
+    for (entry_i = 0u; entry_i < handle->header.bucket_capacity; ++entry_i) {
+      if (bucket->entries[entry_i].occupied != 0u) {
+        visitor(bucket->entries[entry_i].key,
+                bucket->entries[entry_i].record,
+                record_size, user_data);
+      }
+    }
+  }
+
+  ehf_bucket_destroy(bucket);
+  free(sorted_offsets);
+  free(directory);
+  return status;
+}
+
+ehf_status_t ehf_dump(extensible_hash_file_t hash, const char *output_path) {
+  ehf_handle_t *handle = (ehf_handle_t *)hash;
+  FILE *out;
+  uint64_t *directory = NULL;
+  uint64_t *sorted_offsets = NULL;
+  ehf_bucket_t *bucket = NULL;
+  uint64_t prev_offset;
+  uint32_t i;
+  uint32_t entry_i;
+  uint32_t bucket_num;
+  ehf_status_t status = EHF_OK;
+
+  if (!ehf_is_valid_handle(handle) || output_path == NULL) {
+    return EHF_INVALID_ARGUMENT;
+  }
+
+  out = fopen(output_path, "w");
+  if (out == NULL) {
+    return EHF_IO_ERROR;
+  }
+
+  fprintf(out, "=== Extensible Hash File Dump ===\n");
+  fprintf(out, "Global Depth   : %u\n", handle->header.global_depth);
+  fprintf(out, "Directory Size : %u\n", handle->header.directory_size);
+  fprintf(out, "Bucket Capacity: %u\n", handle->header.bucket_capacity);
+  fprintf(out, "Record Size    : %u bytes\n\n", handle->header.record_size);
+
+  if (!ehf_directory_load(handle, &directory)) {
+    fclose(out);
+    return EHF_IO_ERROR;
+  }
+
+  fprintf(out, "=== Directory ===\n");
+  for (i = 0u; i < handle->header.directory_size; ++i) {
+    fprintf(out, "  [%u] -> offset %llu\n", i,
+            (unsigned long long)directory[i]);
+  }
+  fprintf(out, "\n");
+
+  sorted_offsets = (uint64_t *)malloc(
+      (size_t)handle->header.directory_size * sizeof(*sorted_offsets));
+  if (sorted_offsets == NULL) {
+    free(directory);
+    fclose(out);
+    return EHF_IO_ERROR;
+  }
+  memcpy(sorted_offsets, directory,
+         (size_t)handle->header.directory_size * sizeof(*sorted_offsets));
+  qsort(sorted_offsets, (size_t)handle->header.directory_size,
+        sizeof(*sorted_offsets), ehf_compare_uint64);
+
+  bucket = ehf_bucket_create(handle->header.bucket_capacity,
+                             handle->header.record_size);
+  if (bucket == NULL) {
+    free(sorted_offsets);
+    free(directory);
+    fclose(out);
+    return EHF_IO_ERROR;
+  }
+
+  fprintf(out, "=== Buckets ===\n");
+  prev_offset = (uint64_t)-1;
+  bucket_num = 0u;
+  for (i = 0u; i < handle->header.directory_size; ++i) {
+    uint64_t offset = sorted_offsets[i];
+
+    if (offset == prev_offset) {
+      continue;
+    }
+    prev_offset = offset;
+
+    if (!ehf_read_bucket(handle, offset, bucket)) {
+      status = EHF_CORRUPTED_FILE;
+      break;
+    }
+
+    fprintf(out,
+            "Bucket #%u (offset=%llu, local_depth=%u, count=%u/%u)\n",
+            bucket_num++, (unsigned long long)offset,
+            bucket->local_depth, bucket->count,
+            handle->header.bucket_capacity);
+
+    for (entry_i = 0u; entry_i < handle->header.bucket_capacity; ++entry_i) {
+      if (bucket->entries[entry_i].occupied != 0u) {
+        fprintf(out, "  [%u] key=\"%s\"\n", entry_i,
+                bucket->entries[entry_i].key);
+      } else {
+        fprintf(out, "  [%u] (empty)\n", entry_i);
+      }
+    }
+  }
+
+  fprintf(out, "\n=== Split Log (%u event(s)) ===\n",
+          handle->split_log_size);
+  for (i = 0u; i < handle->split_log_size; ++i) {
+    const ehf_split_event_t *ev = &handle->split_log[i];
+    fprintf(out,
+            "  Split #%u: global_depth %u -> %u, local_depth_before=%u,"
+            " bucket_offset=%llu\n",
+            i, ev->global_depth_before, ev->global_depth_after,
+            ev->local_depth_before,
+            (unsigned long long)ev->bucket_offset);
+  }
+
+  ehf_bucket_destroy(bucket);
+  free(sorted_offsets);
+  free(directory);
+  fclose(out);
+  return status;
 }

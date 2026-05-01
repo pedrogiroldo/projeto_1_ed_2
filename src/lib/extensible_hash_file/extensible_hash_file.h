@@ -79,4 +79,32 @@ ehf_status_t ehf_remove(extensible_hash_file_t hash, const char *key);
 /* Reports whether the handle points to an open, valid index. */
 bool ehf_is_open(extensible_hash_file_t hash);
 
+/*
+ * Callback type for ehf_foreach. Called once per occupied entry.
+ * key is the entry key, record points to the record bytes, record_size is the
+ * size passed to ehf_foreach, and user_data is the caller-supplied pointer.
+ */
+typedef void (*ehf_visitor_fn)(const char *key, const void *record,
+                               size_t record_size, void *user_data);
+
+/*
+ * Iterates every occupied entry exactly once, calling visitor for each.
+ *
+ * record_size must match the size used when the hash file was created.
+ * Returns EHF_INVALID_ARGUMENT when hash, visitor, or record_size is invalid,
+ * EHF_IO_ERROR / EHF_CORRUPTED_FILE on I/O problems, or EHF_OK on success.
+ */
+ehf_status_t ehf_foreach(extensible_hash_file_t hash, ehf_visitor_fn visitor,
+                         size_t record_size, void *user_data);
+
+/*
+ * Writes a human-readable dump of the hash file to output_path.
+ *
+ * The dump includes the directory, each bucket with its entries, and a log of
+ * all bucket splits that occurred during this session.
+ * Returns EHF_INVALID_ARGUMENT for NULL arguments, EHF_IO_ERROR if the output
+ * file cannot be written, or EHF_OK on success.
+ */
+ehf_status_t ehf_dump(extensible_hash_file_t hash, const char *output_path);
+
 #endif
