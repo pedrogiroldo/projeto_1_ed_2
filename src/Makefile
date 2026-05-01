@@ -14,6 +14,11 @@ OBJETOS := $(SRC_FILES:.c=.o)       # Substitui .c por .o
 TEST_FILES := $(shell find . -name "t_*.c" 2>/dev/null)
 TEST_BINS := $(patsubst %.c,%_test,$(subst /t_,/,$(TEST_FILES)))
 
+# All non-test, non-main, non-unity sources: each test is linked against all
+# of these so that inter-module dependencies resolve without Makefile changes.
+MAIN_SRC = ./main.c
+TEST_LINK_SRCS := $(filter-out $(MAIN_SRC) $(TEST_SUPPORT_SRC),$(SRC_FILES))
+
 # Compilador e Flags
 CC = gcc
 CFLAGS = -ggdb -O0 -std=c99 -fstack-protector-all -Werror=implicit-function-declaration
@@ -34,13 +39,12 @@ $(PROJ_NAME): $(OBJETOS)
 # Build and run all tests
 test: test-build test-run
 
-# Build all test executables
+# Build all test executables (linked against all module sources for dep resolution)
 test-build:
 	@for test_src in $(TEST_FILES); do \
-		module_src=$$(dirname $$test_src)/$$(basename $$test_src | sed 's/^t_//'); \
 		test_bin=$$(dirname $$test_src)/$$(basename $$test_src .c | sed 's/^t_//')_test; \
 		echo "Building test: $$test_bin"; \
-		$(CC) $(CFLAGS) -o $$test_bin $$test_src $$module_src $(TEST_SUPPORT_SRC) $(LIBS) || exit 1; \
+		$(CC) $(CFLAGS) -o $$test_bin $$test_src $(TEST_LINK_SRCS) $(TEST_SUPPORT_SRC) $(LIBS) || exit 1; \
 	done
 
 # Run all tests
