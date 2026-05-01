@@ -82,4 +82,6 @@ debug:
 run: $(PROJ_NAME)
 	./$(PROJ_NAME) -f test/test.geo -o test/results -q test/test.qry
 
-.PHONY: test test-build test-run test-clean clean debug run
+tstall: test
+
+.PHONY: test test-build test-run test-clean clean debug run tstall
