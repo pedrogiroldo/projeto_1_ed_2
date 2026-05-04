@@ -84,9 +84,10 @@ static void desenhar_quadra_visitor(const char *key, const void *record,
     (void)key;
     (void)record_size;
 
-    svg_writer_retangulo(svg, qreg->x, qreg->y, qreg->largura, qreg->altura,
-                         qreg->cor_preenchimento, qreg->cor_borda,
-                         qreg->espessura_borda);
+    svg_writer_retangulo_base(svg, qreg->x, qreg->y,
+                              qreg->largura, qreg->altura,
+                              qreg->cor_preenchimento, qreg->cor_borda,
+                              qreg->espessura_borda);
 }
 
 static int desenhar_mapa_base(extensible_hash_file_t quadras_hf,
@@ -218,15 +219,6 @@ int main(int argc, char **argv) {
             ehf_close(quadras_hf);
             return 1;
         }
-        if (!desenhar_mapa_base(quadras_hf, svg)) {
-            fprintf(stderr, "erro: nao foi possivel desenhar mapa base\n");
-            svg_writer_finalizar(svg);
-            svg_writer_destruir(svg);
-            ehf_close(habitantes_hf);
-            ehf_close(quadras_hf);
-            return 1;
-        }
-
         txt = txt_writer_criar(txt_path);
         if (txt == NULL) {
             fprintf(stderr, "erro: nao foi possivel criar TXT de saida\n");
@@ -243,6 +235,15 @@ int main(int argc, char **argv) {
         }
         fprintf(stdout, "comandos .qry processados: %d\n",
                 qry_res.comandos_processados);
+        if (!desenhar_mapa_base(quadras_hf, svg)) {
+            fprintf(stderr, "erro: nao foi possivel desenhar mapa base\n");
+            txt_writer_destruir(txt);
+            svg_writer_finalizar(svg);
+            svg_writer_destruir(svg);
+            ehf_close(habitantes_hf);
+            ehf_close(quadras_hf);
+            return 1;
+        }
         txt_writer_destruir(txt);
         txt = NULL;
         svg_writer_finalizar(svg);

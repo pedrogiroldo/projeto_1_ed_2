@@ -32,6 +32,12 @@ void svg_writer_retangulo(svg_writer_t *sw,
                           const char *fill, const char *stroke,
                           double stroke_width);
 
+/* Desenha um retângulo na camada base, escrita antes das marcações. */
+void svg_writer_retangulo_base(svg_writer_t *sw,
+                               double x, double y, double w, double h,
+                               const char *fill, const char *stroke,
+                               double stroke_width);
+
 /* Escreve texto na posição (x, y). */
 void svg_writer_texto(svg_writer_t *sw, double x, double y,
                       const char *texto, const char *font_size,
@@ -40,6 +46,10 @@ void svg_writer_texto(svg_writer_t *sw, double x, double y,
 /* Marca a posição com um X vermelho de tamanho 'tamanho'. */
 void svg_writer_x_vermelho(svg_writer_t *sw,
                            double x, double y, double tamanho);
+
+/* Marca uma quadra removida com diagonais ligando seus vértices opostos. */
+void svg_writer_x_quadra_removida(svg_writer_t *sw,
+                                  double x, double y, double w, double h);
 
 /* Desenha uma cruz vermelha (+ vertical/horizontal) centrada em (x, y). */
 void svg_writer_cruz_vermelha(svg_writer_t *sw,

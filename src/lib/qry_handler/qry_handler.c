@@ -221,7 +221,8 @@ static void cmd_rq(const char *linha,
     free(ctx.cpfs);
 
     if (svg != NULL) {
-        svg_writer_x_vermelho(svg, qreg.x, qreg.y, 10.0);
+        svg_writer_x_quadra_removida(svg, qreg.x, qreg.y,
+                                     qreg.largura, qreg.altura);
     }
 
     ehf_remove(quadras_hf, cep);

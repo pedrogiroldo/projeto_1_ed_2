@@ -297,7 +297,7 @@ void test_qry_rq_remove_quadra_e_despeja(void) {
     ehf_close(quad);
 }
 
-void test_qry_rq_marca_ancora_mesmo_sem_moradores(void) {
+void test_qry_rq_marca_vertices_mesmo_sem_moradores(void) {
     extensible_hash_file_t hab = make_hab_hf();
     extensible_hash_file_t quad = make_quad_hf();
     txt_writer_t *tw = txt_writer_criar(TXT_PATH);
@@ -318,8 +318,10 @@ void test_qry_rq_marca_ancora_mesmo_sem_moradores(void) {
     txt_writer_destruir(tw);
 
     svg_txt = read_svg();
-    TEST_ASSERT_NOT_NULL(strstr(svg_txt, "x1=\"-5.00\" y1=\"-5.00\""));
-    TEST_ASSERT_NOT_NULL(strstr(svg_txt, "x2=\"5.00\" y2=\"5.00\""));
+    TEST_ASSERT_NOT_NULL(strstr(svg_txt,
+        "x1=\"0.00\" y1=\"0.00\" x2=\"100.00\" y2=\"100.00\""));
+    TEST_ASSERT_NOT_NULL(strstr(svg_txt,
+        "x1=\"100.00\" y1=\"0.00\" x2=\"0.00\" y2=\"100.00\""));
 
     ehf_close(hab);
     ehf_close(quad);
@@ -545,7 +547,7 @@ int main(void) {
     RUN_TEST(test_qry_dspj_vira_semteto);
     RUN_TEST(test_qry_dspj_marca_svg_no_endereco);
     RUN_TEST(test_qry_rq_remove_quadra_e_despeja);
-    RUN_TEST(test_qry_rq_marca_ancora_mesmo_sem_moradores);
+    RUN_TEST(test_qry_rq_marca_vertices_mesmo_sem_moradores);
     RUN_TEST(test_qry_pq_conta_faces);
     RUN_TEST(test_qry_pq_escreve_contagens_no_svg);
     RUN_TEST(test_qry_mud_marca_svg_no_destino);

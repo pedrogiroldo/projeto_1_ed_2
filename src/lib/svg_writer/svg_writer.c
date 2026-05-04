@@ -12,6 +12,9 @@
 
 struct svg_writer {
     FILE *file;
+    char *conteudo_base;
+    size_t tamanho_base;
+    size_t capacidade_base;
     char *conteudo;
     size_t tamanho;
     size_t capacidade;
@@ -25,21 +28,22 @@ struct svg_writer {
     int erro;
 };
 
-static int svg_writer_reservar(svg_writer_t *sw, size_t adicional) {
+static int svg_writer_reservar_buffer(char **conteudo, size_t *capacidade,
+                                      size_t tamanho, size_t adicional) {
     char *novo_conteudo;
     size_t nova_capacidade;
     size_t necessario;
 
-    if (sw == NULL) {
+    if (conteudo == NULL || capacidade == NULL) {
         return 0;
     }
 
-    necessario = sw->tamanho + adicional + 1u;
-    if (necessario <= sw->capacidade) {
+    necessario = tamanho + adicional + 1u;
+    if (necessario <= *capacidade) {
         return 1;
     }
 
-    nova_capacidade = sw->capacidade == 0u ? SVG_BUFFER_INICIAL : sw->capacidade;
+    nova_capacidade = *capacidade == 0u ? SVG_BUFFER_INICIAL : *capacidade;
     while (nova_capacidade < necessario) {
         if (nova_capacidade > ((size_t)-1) / 2u) {
             return 0;
@@ -47,44 +51,79 @@ static int svg_writer_reservar(svg_writer_t *sw, size_t adicional) {
         nova_capacidade *= 2u;
     }
 
-    novo_conteudo = (char *)realloc(sw->conteudo, nova_capacidade);
+    novo_conteudo = (char *)realloc(*conteudo, nova_capacidade);
     if (novo_conteudo == NULL) {
         return 0;
     }
 
-    sw->conteudo = novo_conteudo;
-    sw->capacidade = nova_capacidade;
+    *conteudo = novo_conteudo;
+    *capacidade = nova_capacidade;
+    return 1;
+}
+
+static int svg_writer_anexar_em(svg_writer_t *sw,
+                                char **conteudo, size_t *tamanho,
+                                size_t *capacidade,
+                                const char *fmt, va_list args) {
+    va_list args_copia;
+    int escrito;
+
+    if (sw == NULL || conteudo == NULL || tamanho == NULL ||
+        capacidade == NULL || fmt == NULL || sw->erro) {
+        return 0;
+    }
+
+    va_copy(args_copia, args);
+    escrito = vsnprintf(NULL, 0u, fmt, args_copia);
+    va_end(args_copia);
+
+    if (escrito < 0 ||
+        !svg_writer_reservar_buffer(conteudo, capacidade, *tamanho,
+                                    (size_t)escrito)) {
+        sw->erro = 1;
+        return 0;
+    }
+
+    va_copy(args_copia, args);
+    vsnprintf(*conteudo + *tamanho,
+              *capacidade - *tamanho,
+              fmt, args_copia);
+    va_end(args_copia);
+
+    *tamanho += (size_t)escrito;
     return 1;
 }
 
 static int svg_writer_anexar(svg_writer_t *sw, const char *fmt, ...) {
     va_list args;
-    va_list args_copia;
-    int escrito;
+    int ok;
 
-    if (sw == NULL || fmt == NULL || sw->erro) {
+    if (sw == NULL) {
         return 0;
     }
 
     va_start(args, fmt);
-    va_copy(args_copia, args);
-    escrito = vsnprintf(NULL, 0u, fmt, args);
+    ok = svg_writer_anexar_em(sw, &sw->conteudo, &sw->tamanho,
+                              &sw->capacidade, fmt, args);
     va_end(args);
 
-    if (escrito < 0 ||
-        !svg_writer_reservar(sw, (size_t)escrito)) {
-        va_end(args_copia);
-        sw->erro = 1;
+    return ok;
+}
+
+static int svg_writer_anexar_base(svg_writer_t *sw, const char *fmt, ...) {
+    va_list args;
+    int ok;
+
+    if (sw == NULL) {
         return 0;
     }
 
-    vsnprintf(sw->conteudo + sw->tamanho,
-              sw->capacidade - sw->tamanho,
-              fmt, args_copia);
-    va_end(args_copia);
+    va_start(args, fmt);
+    ok = svg_writer_anexar_em(sw, &sw->conteudo_base, &sw->tamanho_base,
+                              &sw->capacidade_base, fmt, args);
+    va_end(args);
 
-    sw->tamanho += (size_t)escrito;
-    return 1;
+    return ok;
 }
 
 static void svg_writer_expandir_bounds(svg_writer_t *sw,
@@ -190,6 +229,9 @@ void svg_writer_finalizar(svg_writer_t *sw) {
             " width=\"%.2f\" height=\"%.2f\""
             " viewBox=\"%.2f %.2f %.2f %.2f\">\n",
             view_w, view_h, view_x, view_y, view_w, view_h);
+    if (sw->conteudo_base != NULL && sw->tamanho_base > 0u) {
+        fwrite(sw->conteudo_base, 1u, sw->tamanho_base, sw->file);
+    }
     if (sw->conteudo != NULL && sw->tamanho > 0u) {
         fwrite(sw->conteudo, 1u, sw->tamanho, sw->file);
     }
@@ -205,14 +247,15 @@ void svg_writer_destruir(svg_writer_t *sw) {
     if (sw->file != NULL) {
         fclose(sw->file);
     }
+    free(sw->conteudo_base);
     free(sw->conteudo);
     free(sw);
 }
 
-void svg_writer_retangulo(svg_writer_t *sw,
-                          double x, double y, double w, double h,
-                          const char *fill, const char *stroke,
-                          double stroke_width) {
+static void svg_writer_retangulo_em(svg_writer_t *sw,
+                                    double x, double y, double w, double h,
+                                    const char *fill, const char *stroke,
+                                    double stroke_width, int camada_base) {
     if (sw == NULL || sw->file == NULL) {
         return;
     }
@@ -221,13 +264,37 @@ void svg_writer_retangulo(svg_writer_t *sw,
                                y - stroke_width / 2.0,
                                x + w + stroke_width / 2.0,
                                y + h + stroke_width / 2.0);
-    svg_writer_anexar(sw,
-                      "  <rect x=\"%.2f\" y=\"%.2f\" width=\"%.2f\" height=\"%.2f\""
-                      " fill=\"%s\" stroke=\"%s\" stroke-width=\"%.2f\"/>\n",
-                      x, y, w, h,
-                      fill != NULL ? fill : "none",
-                      stroke != NULL ? stroke : "none",
-                      stroke_width);
+    if (camada_base) {
+        svg_writer_anexar_base(sw,
+                               "  <rect x=\"%.2f\" y=\"%.2f\" width=\"%.2f\" height=\"%.2f\""
+                               " fill=\"%s\" stroke=\"%s\" stroke-width=\"%.2f\"/>\n",
+                               x, y, w, h,
+                               fill != NULL ? fill : "none",
+                               stroke != NULL ? stroke : "none",
+                               stroke_width);
+    } else {
+        svg_writer_anexar(sw,
+                          "  <rect x=\"%.2f\" y=\"%.2f\" width=\"%.2f\" height=\"%.2f\""
+                          " fill=\"%s\" stroke=\"%s\" stroke-width=\"%.2f\"/>\n",
+                          x, y, w, h,
+                          fill != NULL ? fill : "none",
+                          stroke != NULL ? stroke : "none",
+                          stroke_width);
+    }
+}
+
+void svg_writer_retangulo(svg_writer_t *sw,
+                          double x, double y, double w, double h,
+                          const char *fill, const char *stroke,
+                          double stroke_width) {
+    svg_writer_retangulo_em(sw, x, y, w, h, fill, stroke, stroke_width, 0);
+}
+
+void svg_writer_retangulo_base(svg_writer_t *sw,
+                               double x, double y, double w, double h,
+                               const char *fill, const char *stroke,
+                               double stroke_width) {
+    svg_writer_retangulo_em(sw, x, y, w, h, fill, stroke, stroke_width, 1);
 }
 
 void svg_writer_texto(svg_writer_t *sw, double x, double y,
@@ -268,6 +335,22 @@ void svg_writer_x_vermelho(svg_writer_t *sw,
                       " stroke=\"red\" stroke-width=\"2\"/>\n",
                       x - d, y - d, x + d, y + d,
                       x + d, y - d, x - d, y + d);
+}
+
+void svg_writer_x_quadra_removida(svg_writer_t *sw,
+                                  double x, double y, double w, double h) {
+    if (sw == NULL || sw->file == NULL) {
+        return;
+    }
+    svg_writer_expandir_linha(sw, x, y, x + w, y + h);
+    svg_writer_expandir_linha(sw, x + w, y, x, y + h);
+    svg_writer_anexar(sw,
+                      "  <line x1=\"%.2f\" y1=\"%.2f\" x2=\"%.2f\" y2=\"%.2f\""
+                      " stroke=\"red\" stroke-width=\"2\"/>\n"
+                      "  <line x1=\"%.2f\" y1=\"%.2f\" x2=\"%.2f\" y2=\"%.2f\""
+                      " stroke=\"red\" stroke-width=\"2\"/>\n",
+                      x, y, x + w, y + h,
+                      x + w, y, x, y + h);
 }
 
 void svg_writer_cruz_vermelha(svg_writer_t *sw,
