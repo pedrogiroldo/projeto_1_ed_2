@@ -42,6 +42,65 @@ void test_svg_writer_escreve_elementos_basicos(void) {
     TEST_ASSERT_NOT_NULL(strstr(contents, "</svg>"));
 }
 
+void test_svg_writer_viewbox_usa_bounds_com_margem(void) {
+    svg_writer_t *svg = svg_writer_criar(SVG_PATH, 100.0, 100.0);
+    char *contents;
+
+    TEST_ASSERT_NOT_NULL(svg);
+    svg_writer_retangulo(svg, 100.0, 50.0, 30.0, 20.0,
+                         "red", "black", 2.0);
+    svg_writer_finalizar(svg);
+    svg_writer_destruir(svg);
+
+    contents = read_svg();
+    TEST_ASSERT_NOT_NULL(strstr(contents,
+        "width=\"72.00\" height=\"62.00\" viewBox=\"79.00 29.00 72.00 62.00\""));
+}
+
+void test_svg_writer_viewbox_aceita_coordenadas_negativas(void) {
+    svg_writer_t *svg = svg_writer_criar(SVG_PATH, 100.0, 100.0);
+    char *contents;
+
+    TEST_ASSERT_NOT_NULL(svg);
+    svg_writer_circulo_preto(svg, -5.0, -10.0, 5.0);
+    svg_writer_finalizar(svg);
+    svg_writer_destruir(svg);
+
+    contents = read_svg();
+    TEST_ASSERT_NOT_NULL(strstr(contents,
+        "width=\"50.00\" height=\"50.00\" viewBox=\"-30.00 -35.00 50.00 50.00\""));
+}
+
+void test_svg_writer_viewbox_inclui_marcacoes_e_texto(void) {
+    svg_writer_t *svg = svg_writer_criar(SVG_PATH, 100.0, 100.0);
+    char *contents;
+
+    TEST_ASSERT_NOT_NULL(svg);
+    svg_writer_x_vermelho(svg, 0.0, 0.0, 10.0);
+    svg_writer_cruz_vermelha(svg, 50.0, 10.0, 20.0);
+    svg_writer_circulo_preto(svg, 100.0, 100.0, 5.0);
+    svg_writer_texto(svg, -30.0, 40.0, "abcd", "10", "black");
+    svg_writer_finalizar(svg);
+    svg_writer_destruir(svg);
+
+    contents = read_svg();
+    TEST_ASSERT_NOT_NULL(strstr(contents,
+        "width=\"175.00\" height=\"151.00\" viewBox=\"-50.00 -26.00 175.00 151.00\""));
+}
+
+void test_svg_writer_sem_elementos_usa_fallback(void) {
+    svg_writer_t *svg = svg_writer_criar(SVG_PATH, 25.0, 30.0);
+    char *contents;
+
+    TEST_ASSERT_NOT_NULL(svg);
+    svg_writer_finalizar(svg);
+    svg_writer_destruir(svg);
+
+    contents = read_svg();
+    TEST_ASSERT_NOT_NULL(strstr(contents,
+        "width=\"25.00\" height=\"30.00\" viewBox=\"0.00 0.00 25.00 30.00\""));
+}
+
 void test_svg_writer_rejeita_path_null(void) {
     TEST_ASSERT_NULL(svg_writer_criar(NULL, 100.0, 100.0));
     svg_writer_destruir(NULL);
@@ -51,6 +110,10 @@ void test_svg_writer_rejeita_path_null(void) {
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_svg_writer_escreve_elementos_basicos);
+    RUN_TEST(test_svg_writer_viewbox_usa_bounds_com_margem);
+    RUN_TEST(test_svg_writer_viewbox_aceita_coordenadas_negativas);
+    RUN_TEST(test_svg_writer_viewbox_inclui_marcacoes_e_texto);
+    RUN_TEST(test_svg_writer_sem_elementos_usa_fallback);
     RUN_TEST(test_svg_writer_rejeita_path_null);
     return UNITY_END();
 }

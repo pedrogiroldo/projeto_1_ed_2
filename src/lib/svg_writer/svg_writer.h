@@ -12,8 +12,9 @@
 typedef struct svg_writer svg_writer_t;
 
 /*
- * Abre output_path para escrita e escreve o cabeçalho SVG.
- * largura e altura definem o viewport em unidades SVG.
+ * Abre output_path para escrita. O viewBox final é calculado dinamicamente
+ * a partir dos elementos desenhados, com margem fixa. largura e altura são
+ * usados apenas como fallback quando nenhum elemento é desenhado.
  * Retorna NULL se output_path for NULL ou se o arquivo não puder ser aberto.
  */
 svg_writer_t *svg_writer_criar(const char *output_path,

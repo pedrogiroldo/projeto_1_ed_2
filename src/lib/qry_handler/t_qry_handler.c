@@ -264,7 +264,7 @@ void test_qry_dspj_marca_svg_no_endereco(void) {
     txt_writer_destruir(tw);
 
     svg_txt = read_svg();
-    TEST_ASSERT_NOT_NULL(strstr(svg_txt, "<circle cx=\"100.00\" cy=\"95.00\""));
+    TEST_ASSERT_NOT_NULL(strstr(svg_txt, "<circle cx=\"0.00\" cy=\"5.00\""));
 
     ehf_close(hab);
     ehf_close(quad);
@@ -318,8 +318,8 @@ void test_qry_rq_marca_ancora_mesmo_sem_moradores(void) {
     txt_writer_destruir(tw);
 
     svg_txt = read_svg();
-    TEST_ASSERT_NOT_NULL(strstr(svg_txt, "x1=\"95.00\" y1=\"95.00\""));
-    TEST_ASSERT_NOT_NULL(strstr(svg_txt, "x2=\"105.00\" y2=\"105.00\""));
+    TEST_ASSERT_NOT_NULL(strstr(svg_txt, "x1=\"-5.00\" y1=\"-5.00\""));
+    TEST_ASSERT_NOT_NULL(strstr(svg_txt, "x2=\"5.00\" y2=\"5.00\""));
 
     ehf_close(hab);
     ehf_close(quad);
@@ -367,6 +367,7 @@ void test_qry_pq_escreve_contagens_no_svg(void) {
     insert_habitante(hab, "22222222222", "B", 'F', 1, "cep1", 'S', 2);
     insert_habitante(hab, "33333333333", "C", 'M', 1, "cep1", 'L', 3);
     insert_habitante(hab, "44444444444", "D", 'F', 1, "cep1", 'S', 4);
+    insert_habitante(hab, "55555555555", "E", 'M', 1, "cep1", 'O', 5);
 
     write_qry("pq cep1\n");
     res = qry_handler_processar(QRY_PATH, quad, hab, svg, tw);
@@ -381,8 +382,10 @@ void test_qry_pq_escreve_contagens_no_svg(void) {
     TEST_ASSERT_NOT_NULL(strstr(svg_txt, ">1</text>"));
     TEST_ASSERT_NOT_NULL(strstr(svg_txt, "<text x=\"50.00\" y=\"-4.00\""));
     TEST_ASSERT_NOT_NULL(strstr(svg_txt, ">2</text>"));
+    TEST_ASSERT_NOT_NULL(strstr(svg_txt, "<text x=\"-12.00\" y=\"50.00\""));
+    TEST_ASSERT_NOT_NULL(strstr(svg_txt, "<text x=\"104.00\" y=\"50.00\""));
     TEST_ASSERT_NOT_NULL(strstr(svg_txt, "<text x=\"50.00\" y=\"50.00\""));
-    TEST_ASSERT_NOT_NULL(strstr(svg_txt, ">4</text>"));
+    TEST_ASSERT_NOT_NULL(strstr(svg_txt, ">5</text>"));
 
     ehf_close(hab);
     ehf_close(quad);
@@ -410,7 +413,7 @@ void test_qry_mud_marca_svg_no_destino(void) {
     txt_writer_destruir(tw);
 
     svg_txt = read_svg();
-    TEST_ASSERT_NOT_NULL(strstr(svg_txt, "<rect x=\"-9.00\" y=\"-10.00\""));
+    TEST_ASSERT_NOT_NULL(strstr(svg_txt, "<rect x=\"89.00\" y=\"-10.00\""));
     TEST_ASSERT_NOT_NULL(strstr(svg_txt, "12345678900"));
 
     ehf_close(hab);
@@ -439,8 +442,37 @@ void test_qry_rip_marca_svg_no_endereco(void) {
     txt_writer_destruir(tw);
 
     svg_txt = read_svg();
-    TEST_ASSERT_NOT_NULL(strstr(svg_txt, "x1=\"90.00\" y1=\"95.00\""));
-    TEST_ASSERT_NOT_NULL(strstr(svg_txt, "x2=\"90.00\" y2=\"105.00\""));
+    TEST_ASSERT_NOT_NULL(strstr(svg_txt, "x1=\"10.00\" y1=\"95.00\""));
+    TEST_ASSERT_NOT_NULL(strstr(svg_txt, "x2=\"10.00\" y2=\"105.00\""));
+
+    ehf_close(hab);
+    ehf_close(quad);
+}
+
+void test_qry_rip_marca_svg_face_o(void) {
+    extensible_hash_file_t hab = make_hab_hf();
+    extensible_hash_file_t quad = make_quad_hf();
+    txt_writer_t *tw = txt_writer_criar(TXT_PATH);
+    svg_writer_t *svg = svg_writer_criar(SVG_PATH, 200.0, 200.0);
+    qry_handler_resultado_t res;
+    char *svg_txt;
+
+    TEST_ASSERT_NOT_NULL(hab);
+    TEST_ASSERT_NOT_NULL(quad);
+    TEST_ASSERT_NOT_NULL(svg);
+    insert_habitante(hab, "12345678900", "Joao", 'M', 1, "cep1", 'O', 10);
+
+    write_qry("rip 12345678900\n");
+    res = qry_handler_processar(QRY_PATH, quad, hab, svg, tw);
+    TEST_ASSERT_EQUAL_INT(1, res.comandos_processados);
+
+    svg_writer_finalizar(svg);
+    svg_writer_destruir(svg);
+    txt_writer_destruir(tw);
+
+    svg_txt = read_svg();
+    TEST_ASSERT_NOT_NULL(strstr(svg_txt, "x1=\"100.00\" y1=\"5.00\""));
+    TEST_ASSERT_NOT_NULL(strstr(svg_txt, "x2=\"100.00\" y2=\"15.00\""));
 
     ehf_close(hab);
     ehf_close(quad);
@@ -518,6 +550,7 @@ int main(void) {
     RUN_TEST(test_qry_pq_escreve_contagens_no_svg);
     RUN_TEST(test_qry_mud_marca_svg_no_destino);
     RUN_TEST(test_qry_rip_marca_svg_no_endereco);
+    RUN_TEST(test_qry_rip_marca_svg_face_o);
     RUN_TEST(test_qry_rip_duplicado_eh_idempotente_sem_erro);
     RUN_TEST(test_qry_dspj_duplicado_eh_idempotente_sem_erro);
     return UNITY_END();

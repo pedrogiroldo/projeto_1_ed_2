@@ -36,24 +36,24 @@ static qry_ponto_t endereco_para_ponto(const quadra_registro_t *qreg,
 
     switch (face) {
         case 'N':
-            p.x = qreg->x + qreg->largura - (double)num;
+            p.x = qreg->x + (double)num;
             p.y = qreg->y + qreg->altura;
             break;
         case 'S':
-            p.x = qreg->x + qreg->largura - (double)num;
+            p.x = qreg->x + (double)num;
             p.y = qreg->y;
             break;
         case 'L':
-            p.x = qreg->x + qreg->largura;
-            p.y = qreg->y + qreg->altura - (double)num;
+            p.x = qreg->x;
+            p.y = qreg->y + (double)num;
             break;
         case 'O':
-            p.x = qreg->x;
-            p.y = qreg->y + qreg->altura - (double)num;
+            p.x = qreg->x + qreg->largura;
+            p.y = qreg->y + (double)num;
             break;
         default:
-            p.x = qreg->x + qreg->largura;
-            p.y = qreg->y + qreg->altura;
+            p.x = qreg->x;
+            p.y = qreg->y;
             break;
     }
 
@@ -221,8 +221,7 @@ static void cmd_rq(const char *linha,
     free(ctx.cpfs);
 
     if (svg != NULL) {
-        svg_writer_x_vermelho(svg, qreg.x + qreg.largura,
-                              qreg.y + qreg.altura, 10.0);
+        svg_writer_x_vermelho(svg, qreg.x, qreg.y, 10.0);
     }
 
     ehf_remove(quadras_hf, cep);
@@ -265,11 +264,11 @@ static void cmd_pq(const char *linha,
         svg_writer_texto(svg, qreg.x + qreg.largura / 2.0, qreg.y - 4.0,
                          buf, "10", "black");
         snprintf(buf, sizeof(buf), "%d", ctx.leste);
-        svg_writer_texto(svg, qreg.x + qreg.largura + 4.0,
+        svg_writer_texto(svg, qreg.x - 12.0,
                          qreg.y + qreg.altura / 2.0, buf, "10", "black");
         snprintf(buf, sizeof(buf), "%d", ctx.oeste);
-        svg_writer_texto(svg, qreg.x - 12.0, qreg.y + qreg.altura / 2.0,
-                         buf, "10", "black");
+        svg_writer_texto(svg, qreg.x + qreg.largura + 4.0,
+                         qreg.y + qreg.altura / 2.0, buf, "10", "black");
         snprintf(buf, sizeof(buf), "%d", total);
         svg_writer_texto(svg, qreg.x + qreg.largura / 2.0,
                          qreg.y + qreg.altura / 2.0, buf, "12", "black");

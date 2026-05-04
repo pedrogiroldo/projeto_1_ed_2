@@ -164,7 +164,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    svg = svg_writer_criar(geo_svg_path, 2000.0, 2000.0);
+    svg = svg_writer_criar(geo_svg_path, 1.0, 1.0);
     if (svg == NULL) {
         fprintf(stderr, "erro: nao foi possivel criar SVG do .geo\n");
         ehf_close(habitantes_hf);
@@ -211,7 +211,7 @@ int main(int argc, char **argv) {
         join_path(txt_path, sizeof(txt_path), bsd, qry_output_base);
         strncat(txt_path, ".txt", sizeof(txt_path) - strlen(txt_path) - 1u);
 
-        svg = svg_writer_criar(qry_svg_path, 2000.0, 2000.0);
+        svg = svg_writer_criar(qry_svg_path, 1.0, 1.0);
         if (svg == NULL) {
             fprintf(stderr, "erro: nao foi possivel criar SVG do .qry\n");
             ehf_close(habitantes_hf);
