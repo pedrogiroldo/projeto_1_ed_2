@@ -1,110 +1,146 @@
+/**
+ * @file extensible_hash_file.h
+ * @brief Índice hash extensível persistido em arquivo.
+ *
+ * Use ehf_create() para criar um novo arquivo de índice ou ehf_open() para
+ * reabrir um existente. Armazene registros de tamanho fixo com ehf_insert(),
+ * recupere-os com ehf_find(), remova entradas com ehf_remove() e finalize
+ * sempre com ehf_close().
+ */
+
 #ifndef EXTENSIBLE_HASH_FILE_H
 #define EXTENSIBLE_HASH_FILE_H
-
-/*
- * File-backed extensible hash index.
- *
- * Use ehf_create() to create a new hash file or ehf_open() to reuse an
- * existing one. Store fixed-size records by passing an alphanumeric key and a
- * record buffer to ehf_insert(), recover records with ehf_find(), remove
- * entries with ehf_remove(), and always finish with ehf_close().
- */
 
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
 
-/* Opaque handle for a file-backed extensible hash index. */
+/** Handle opaco para um índice hash extensível persistido em arquivo. */
 typedef void *extensible_hash_file_t;
 
-/* Result codes returned by the public index operations. */
+/**
+ * @brief Códigos de resultado retornados pelas operações do índice.
+ */
 typedef enum {
-    EHF_OK = 0,
-    EHF_NOT_FOUND,
-    EHF_DUPLICATE_KEY,
-    EHF_INVALID_ARGUMENT,
-    EHF_IO_ERROR,
-    EHF_CORRUPTED_FILE
+    EHF_OK = 0,           /**< Operação concluída com sucesso. */
+    EHF_NOT_FOUND,        /**< Chave não encontrada no índice. */
+    EHF_DUPLICATE_KEY,    /**< Chave já existe no índice. */
+    EHF_INVALID_ARGUMENT, /**< Argumento NULL ou inválido. */
+    EHF_IO_ERROR,         /**< Falha de leitura ou escrita no arquivo. */
+    EHF_CORRUPTED_FILE    /**< Conteúdo do arquivo é inválido ou corrompido. */
 } ehf_status_t;
 
-/*
- * Creates a new hash file at index_path.
+/**
+ * @brief Cria um novo arquivo de índice hash em @p index_path.
  *
- * bucket_capacity defines how many entries fit in each bucket before a split.
- * record_size defines the byte size of every record stored in this hash file.
- * Returns NULL when the arguments are invalid or allocation/write fails.
+ * @param index_path       Caminho do arquivo a criar (não-NULL).
+ * @param bucket_capacity  Número máximo de entradas por bucket antes de dividir.
+ * @param record_size      Tamanho em bytes de cada registro armazenado.
+ * @return Handle válido ou NULL se os argumentos forem inválidos ou ocorrer
+ *         falha de alocação/escrita.
  */
 extensible_hash_file_t ehf_create(const char *index_path, uint32_t bucket_capacity,
                                   size_t record_size);
 
-/*
- * Opens an existing index file and validates its header.
+/**
+ * @brief Abre um arquivo de índice existente e valida seu cabeçalho.
  *
- * Returns NULL if index_path is invalid, if the file does not exist, or if the
- * contents do not match the expected format.
+ * @param index_path Caminho do arquivo (não-NULL, deve existir).
+ * @return Handle válido ou NULL se @p index_path for inválido, o arquivo não
+ *         existir, ou seu conteúdo não corresponder ao formato esperado.
  */
 extensible_hash_file_t ehf_open(const char *index_path);
 
-/* Closes the index, releases its resources, and accepts NULL safely. */
+/**
+ * @brief Fecha o índice e libera seus recursos. Aceita NULL com segurança.
+ * @param hash Handle a fechar.
+ */
 void ehf_close(extensible_hash_file_t hash);
 
-/*
- * Inserts a 1- to 32-character alphanumeric key associated with record bytes.
+/**
+ * @brief Insere um registro associado a uma chave alfanumérica de 1 a 32 caracteres.
  *
- * Returns EHF_DUPLICATE_KEY when the key already exists, EHF_INVALID_ARGUMENT
- * for invalid handles/keys/record sizes, EHF_IO_ERROR for write failures, or
- * EHF_OK on success.
+ * @param hash        Handle do índice (não-NULL).
+ * @param key         Chave alfanumérica (1–32 caracteres, não-NULL).
+ * @param record      Buffer com os bytes do registro (não-NULL).
+ * @param record_size Tamanho do registro em bytes.
+ * @return EHF_OK em sucesso; EHF_DUPLICATE_KEY se a chave já existir;
+ *         EHF_INVALID_ARGUMENT para argumentos inválidos; EHF_IO_ERROR em
+ *         falha de escrita.
  */
 ehf_status_t ehf_insert(extensible_hash_file_t hash, const char *key,
                         const void *record, size_t record_size);
 
-/*
- * Finds a 1- to 32-character alphanumeric key.
+/**
+ * @brief Localiza uma chave e copia o registro associado para @p out_record.
  *
- * On success, copies the found record to out_record and returns EHF_OK.
- * Returns EHF_NOT_FOUND when the key does not exist and EHF_INVALID_ARGUMENT
- * when hash, key, out_record, or record_size is invalid.
+ * @param hash        Handle do índice (não-NULL).
+ * @param key         Chave alfanumérica a buscar (1–32 caracteres, não-NULL).
+ * @param out_record  Buffer de destino para o registro encontrado (não-NULL).
+ * @param record_size Tamanho esperado do registro.
+ * @return EHF_OK em sucesso; EHF_NOT_FOUND se a chave não existir;
+ *         EHF_INVALID_ARGUMENT para argumentos inválidos.
  */
 ehf_status_t ehf_find(extensible_hash_file_t hash, const char *key,
                       void *out_record, size_t record_size);
 
-/*
- * Removes a 1- to 32-character alphanumeric key from the index.
+/**
+ * @brief Remove uma chave do índice.
  *
- * Returns EHF_NOT_FOUND when the key does not exist and EHF_INVALID_ARGUMENT
- * for invalid handles/keys.
+ * @param hash Handle do índice (não-NULL).
+ * @param key  Chave alfanumérica a remover (1–32 caracteres, não-NULL).
+ * @return EHF_OK em sucesso; EHF_NOT_FOUND se a chave não existir;
+ *         EHF_INVALID_ARGUMENT para argumentos inválidos.
  */
 ehf_status_t ehf_remove(extensible_hash_file_t hash, const char *key);
 
-/* Reports whether the handle points to an open, valid index. */
+/**
+ * @brief Verifica se o handle aponta para um índice aberto e válido.
+ * @param hash Handle a verificar.
+ * @return @c true se válido, @c false caso contrário.
+ */
 bool ehf_is_open(extensible_hash_file_t hash);
 
-/*
- * Callback type for ehf_foreach. Called once per occupied entry.
- * key is the entry key, record points to the record bytes, record_size is the
- * size passed to ehf_foreach, and user_data is the caller-supplied pointer.
+/**
+ * @brief Tipo de callback para ehf_foreach.
+ *
+ * Chamada uma vez por entrada ocupada no índice.
+ *
+ * @param key         Chave da entrada.
+ * @param record      Ponteiro para os bytes do registro.
+ * @param record_size Tamanho do registro.
+ * @param user_data   Ponteiro fornecido pelo chamador.
  */
 typedef void (*ehf_visitor_fn)(const char *key, const void *record,
                                size_t record_size, void *user_data);
 
-/*
- * Iterates every occupied entry exactly once, calling visitor for each.
+/**
+ * @brief Itera todas as entradas ocupadas, chamando @p visitor para cada uma.
  *
- * record_size must match the size used when the hash file was created.
- * Returns EHF_INVALID_ARGUMENT when hash, visitor, or record_size is invalid,
- * EHF_IO_ERROR / EHF_CORRUPTED_FILE on I/O problems, or EHF_OK on success.
+ * A ordem de iteração não é garantida. @p record_size deve corresponder ao
+ * tamanho usado na criação do arquivo.
+ *
+ * @param hash        Handle do índice (não-NULL).
+ * @param visitor     Callback a invocar por entrada (não-NULL).
+ * @param record_size Tamanho do registro em bytes.
+ * @param user_data   Ponteiro livre repassado a @p visitor.
+ * @return EHF_OK em sucesso; EHF_INVALID_ARGUMENT para argumentos inválidos;
+ *         EHF_IO_ERROR ou EHF_CORRUPTED_FILE em problemas de leitura.
  */
 ehf_status_t ehf_foreach(extensible_hash_file_t hash, ehf_visitor_fn visitor,
                          size_t record_size, void *user_data);
 
-/*
- * Writes a human-readable dump of the hash file to output_path.
+/**
+ * @brief Grava um dump legível do arquivo de índice em @p output_path.
  *
- * The dump includes the directory, each bucket with its entries, and a log of
- * all bucket splits that occurred during this session.
- * Returns EHF_INVALID_ARGUMENT for NULL arguments, EHF_IO_ERROR if the output
- * file cannot be written, or EHF_OK on success.
+ * O dump inclui o diretório, cada bucket com suas entradas e um log de todas
+ * as divisões de bucket ocorridas na sessão.
+ *
+ * @param hash        Handle do índice (não-NULL).
+ * @param output_path Caminho do arquivo de saída (não-NULL).
+ * @return EHF_OK em sucesso; EHF_INVALID_ARGUMENT para argumentos NULL;
+ *         EHF_IO_ERROR se o arquivo de saída não puder ser escrito.
  */
 ehf_status_t ehf_dump(extensible_hash_file_t hash, const char *output_path);
 
-#endif
+#endif // EXTENSIBLE_HASH_FILE_H
