@@ -116,6 +116,7 @@ int main(int argc, char **argv) {
     char geo_base[PATH_MAX_LEN];
     char qry_base[PATH_MAX_LEN];
     char qry_output_base[PATH_MAX_LEN];
+    char hash_name_prefix[PATH_MAX_LEN];
 
     extensible_hash_file_t quadras_hf = NULL;
     extensible_hash_file_t habitantes_hf = NULL;
@@ -130,8 +131,10 @@ int main(int argc, char **argv) {
     pm_file  = get_option_value(argc, argv, "pm");
     qry_file = get_option_value(argc, argv, "q");
 
-    if (bed == NULL || bsd == NULL || geo_file == NULL) {
-        fprintf(stderr, "uso: ted -e <BED> -f <arq.geo> -o <BSD>"
+    if (bed == NULL) bed = ".";
+
+    if (bsd == NULL || geo_file == NULL) {
+        fprintf(stderr, "uso: ted [-e <BED>] -f <arq.geo> -o <BSD>"
                         " [-pm <arq.pm>] [-q <arq.qry>]\n");
         return 1;
     }
@@ -141,16 +144,32 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    join_path(geo_path,      sizeof(geo_path),      bed, geo_file);
-    join_path(quad_hf_path,  sizeof(quad_hf_path),  bsd, "quadras.hf");
-    join_path(hab_hf_path,   sizeof(hab_hf_path),   bsd, "habitantes.hf");
-    join_path(quad_hfd_path, sizeof(quad_hfd_path), bsd, "quadras.hfd");
-    join_path(hab_hfd_path,  sizeof(hab_hfd_path),  bsd, "habitantes.hfd");
+    join_path(geo_path, sizeof(geo_path), bed, geo_file);
 
     strip_ext(geo_base, sizeof(geo_base), geo_file);
     join_path(geo_svg_path, sizeof(geo_svg_path), bsd, geo_base);
     strncat(geo_svg_path, ".svg",
             sizeof(geo_svg_path) - strlen(geo_svg_path) - 1u);
+
+    if (qry_file != NULL)
+        strip_ext(qry_base, sizeof(qry_base), qry_file);
+    else
+        qry_base[0] = '\0';
+
+    if (qry_base[0] != '\0') {
+        if (!compose_qry_output_base(hash_name_prefix, sizeof(hash_name_prefix),
+                                     geo_base, qry_base)) {
+            fprintf(stderr, "erro: nome de saida do hash muito longo\n");
+            return 1;
+        }
+    } else {
+        memcpy(hash_name_prefix, geo_base, strlen(geo_base) + 1u);
+    }
+
+    snprintf(quad_hf_path,  sizeof(quad_hf_path),  "%s/%s-quadras.hf",     bsd, hash_name_prefix);
+    snprintf(hab_hf_path,   sizeof(hab_hf_path),   "%s/%s-habitantes.hf",  bsd, hash_name_prefix);
+    snprintf(quad_hfd_path, sizeof(quad_hfd_path), "%s/%s-quadras.hfd",    bsd, hash_name_prefix);
+    snprintf(hab_hfd_path,  sizeof(hab_hfd_path),  "%s/%s-habitantes.hfd", bsd, hash_name_prefix);
 
     quadras_hf = ehf_create(quad_hf_path, 10u, sizeof(quadra_registro_t));
     if (quadras_hf == NULL) {
@@ -198,7 +217,6 @@ int main(int argc, char **argv) {
         qry_handler_resultado_t qry_res;
         join_path(qry_path, sizeof(qry_path), bed, qry_file);
 
-        strip_ext(qry_base, sizeof(qry_base), qry_file);
         if (!compose_qry_output_base(qry_output_base, sizeof(qry_output_base),
                                      geo_base, qry_base)) {
             fprintf(stderr, "erro: nome de saida do .qry muito longo\n");
