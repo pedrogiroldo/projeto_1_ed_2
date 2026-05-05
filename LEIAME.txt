@@ -1,4 +1,1 @@
-Pedro Andrade Giroldo
-
-Para rodar os testes com Unity:
-make test
+Pedro Andrade Giroldo 202500560625
