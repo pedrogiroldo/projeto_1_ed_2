@@ -5,15 +5,15 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#include "lib/args_handler/args_handler.h"
-#include "lib/extensible_hash_file/extensible_hash_file.h"
-#include "lib/geo_handler/geo_handler.h"
-#include "lib/habitante/habitante.h"
-#include "lib/pm_handler/pm_handler.h"
-#include "lib/qry_handler/qry_handler.h"
-#include "lib/quadra/quadra.h"
-#include "lib/svg_writer/svg_writer.h"
-#include "lib/txt_writer/txt_writer.h"
+#include "args_handler.h"
+#include "extensible_hash_file.h"
+#include "geo_handler.h"
+#include "habitante.h"
+#include "pm_handler.h"
+#include "qry_handler.h"
+#include "quadra.h"
+#include "svg_writer.h"
+#include "txt_writer.h"
 
 #define PATH_MAX_LEN 1024
 
